@@ -30,6 +30,7 @@ import org.springframework.cloud.gateway.filter.GlobalFilter;
 import org.springframework.core.Ordered;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.server.reactive.ServerHttpRequest;
 import org.springframework.http.server.reactive.ServerHttpResponse;
 import org.springframework.stereotype.Component;
 import org.springframework.util.AntPathMatcher;
@@ -60,17 +61,20 @@ public class AuthFilter implements GlobalFilter, Ordered {
 		}
 		ServerHttpResponse resp = exchange.getResponse();
 		String headerToken = exchange.getRequest().getHeaders().getFirst(AuthProvider.AUTH_KEY);
-		String paramToken = exchange.getRequest().getQueryParams().getFirst(AuthProvider.AUTH_KEY);
-		if (StringUtils.isBlank(headerToken) && StringUtils.isBlank(paramToken)) {
+		if (StringUtils.isBlank(headerToken)) {
 			return unAuth(resp, "缺失令牌,鉴权失败");
 		}
-		String auth = StringUtils.isBlank(headerToken) ? paramToken : headerToken;
-		String token = JwtUtil.getToken(auth);
+		String token = JwtUtil.getToken(headerToken);
 		Claims claims = JwtUtil.parseJWT(token);
 		if (claims == null) {
 			return unAuth(resp, "请求未授权");
 		}
-		return chain.filter(exchange);
+
+		String username = String.valueOf(claims.get("username"));
+		ServerHttpRequest request = exchange.getRequest();
+		ServerHttpRequest serverHttpRequest = request.mutate().header("username", username).build();
+
+		return chain.filter(exchange.mutate().request(serverHttpRequest).build());
 	}
 
 	private boolean isSkip(String path) {
